@@ -85,7 +85,7 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Expose only the Nginx port
 EXPOSE 8080
 
-# Create a script to run backend, frontend, and nginx
+# Create a script to run backend, frontend, and nginx, waiting for both to be ready
 RUN echo '#!/bin/bash\n\
 # Load environment variables from .env file if it exists\n\
 if [ -f .env ]; then\n\
@@ -101,8 +101,16 @@ fi\n\
 \n\
 # Start the API server on 9000\n\
 python -m api.main --port 9000 &\n\
+API_PID=$!\n\
 # Start Next.js frontend on 3000\n\
 PORT=3000 HOSTNAME=0.0.0.0 node server.js &\n\
+FRONTEND_PID=$!\n\
+# Wait for both ports to be ready\n\
+for i in {1..30}; do\n\
+    nc -z localhost 9000 && nc -z localhost 3000 && break\n\
+    echo "Waiting for backend (9000) and frontend (3000) to be ready..."\n\
+    sleep 1\n\
+done\n\
 # Start Nginx in foreground\n\
 nginx -g "daemon off;"\n' > /app/start.sh && chmod +x /app/start.sh
 
