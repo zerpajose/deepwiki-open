@@ -3,8 +3,8 @@ import sys
 import logging
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file, but do NOT overwrite existing envs (for Cloud Run compatibility)
+load_dotenv(override=False)
 
 from api.logging_config import setup_logging
 
