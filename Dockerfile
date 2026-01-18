@@ -33,18 +33,20 @@ RUN python -m pip install poetry==2.0.1 --no-cache-dir && \
     POETRY_MAX_WORKERS=10 poetry install --no-interaction --no-ansi --only main && \
     poetry cache clear --all .
 
+
 # Use Python 3.11 as final image
 FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install Node.js and npm
+# Install Node.js, npm, and Nginx
 RUN apt-get update && apt-get install -y \
     curl \
     gnupg \
     git \
     ca-certificates \
+    nginx \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list \
@@ -71,38 +73,43 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --from=py_deps /api/.venv /opt/venv
 COPY api/ ./api/
 
+
 # Copy Node app
 COPY --from=node_builder /app/public ./public
 COPY --from=node_builder /app/.next/standalone ./
 COPY --from=node_builder /app/.next/static ./.next/static
 
-# Expose the port the app runs on
-EXPOSE ${PORT:-8080} 3000
+# Copy nginx config
+COPY nginx.conf /etc/nginx/nginx.conf
 
-# Create a script to run both backend and frontend
+# Expose only the Nginx port
+EXPOSE 8080
+
+# Create a script to run backend, frontend, and nginx
 RUN echo '#!/bin/bash\n\
 # Load environment variables from .env file if it exists\n\
 if [ -f .env ]; then\n\
-  export $(grep -v "^#" .env | xargs -r)\n\
+    export $(grep -v "^#" .env | xargs -r)\n\
 fi\n\
 \n\
 # Check for required environment variables\n\
 if [ -z "$OPENAI_API_KEY" ] || [ -z "$GOOGLE_API_KEY" ]; then\n\
-  echo "Warning: OPENAI_API_KEY and/or GOOGLE_API_KEY environment variables are not set."\n\
-  echo "These are required for DeepWiki to function properly."\n\
-  echo "You can provide them via a mounted .env file or as environment variables when running the container."\n\
+    echo "Warning: OPENAI_API_KEY and/or GOOGLE_API_KEY environment variables are not set."\n\
+    echo "These are required for DeepWiki to function properly."\n\
+    echo "You can provide them via a mounted .env file or as environment variables when running the container."\n\
 fi\n\
 \n\
-# Start the API server in the background with the configured port\n\
-python -m api.main --port ${PORT:-8080} &\n\
+# Start the API server on 9000\n\
+python -m api.main --port 9000 &\n\
+# Start Next.js frontend on 3000\n\
 PORT=3000 HOSTNAME=0.0.0.0 node server.js &\n\
-wait -n\n\
-exit $?' > /app/start.sh && chmod +x /app/start.sh
+# Start Nginx in foreground\n\
+nginx -g "daemon off;"\n' > /app/start.sh && chmod +x /app/start.sh
 
 # Set environment variables
 ENV PORT=8080
 ENV NODE_ENV=production
-ENV SERVER_BASE_URL=http://localhost:${PORT:-8080}
+ENV SERVER_BASE_URL=http://localhost:8080
 
 # Create empty .env file (will be overridden if one exists at runtime)
 RUN touch .env
