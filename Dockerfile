@@ -86,8 +86,9 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Expose only the Nginx port
 EXPOSE 8080
 
-# Create a script to run backend, frontend, and nginx, waiting for both to be ready
+# Create a script to run backend, frontend, and nginx, waiting for both to be ready, with better error handling and logging
 RUN echo '#!/bin/bash\n\
+set -e\n\
 # Load environment variables from .env file if it exists\n\
 if [ -f .env ]; then\n\
     export $(grep -v "^#" .env | xargs -r)\n\
@@ -100,18 +101,25 @@ if [ -z "$OPENAI_API_KEY" ] || [ -z "$GOOGLE_API_KEY" ]; then\n\
     echo "You can provide them via a mounted .env file or as environment variables when running the container."\n\
 fi\n\
 \n\
-# Start the API server on 9000\n\
-python -m api.main --port 9000 &\n\
+# Stop any old nginx process (just in case)\n\
+nginx -s stop || true\n\
+# Start the API server on 9000, log output\n\
+python -m api.main --port 9000 > /app/api.log 2>&1 &\n\
 API_PID=$!\n\
-# Start Next.js frontend on 3000\n\
-PORT=3000 HOSTNAME=0.0.0.0 node server.js &\n\
+# Start Next.js frontend on 3000, log output\n\
+PORT=3000 HOSTNAME=0.0.0.0 node server.js > /app/frontend.log 2>&1 &\n\
 FRONTEND_PID=$!\n\
 # Wait for both ports to be ready\n\
 for i in {1..30}; do\n\
+    if ! kill -0 $API_PID 2>/dev/null; then echo "API process exited early"; cat /app/api.log; exit 1; fi\n\
+    if ! kill -0 $FRONTEND_PID 2>/dev/null; then echo "Frontend process exited early"; cat /app/frontend.log; exit 1; fi\n\
     nc -z localhost 9000 && nc -z localhost 3000 && break\n\
     echo "Waiting for backend (9000) and frontend (3000) to be ready..."\n\
     sleep 1\n\
 done\n\
+# Show logs if not ready\n\
+if ! nc -z localhost 9000; then echo "API did not start"; cat /app/api.log; exit 1; fi\n\
+if ! nc -z localhost 3000; then echo "Frontend did not start"; cat /app/frontend.log; exit 1; fi\n\
 # Start Nginx in foreground\n\
 nginx -g "daemon off;"\n' > /app/start.sh && chmod +x /app/start.sh
 
