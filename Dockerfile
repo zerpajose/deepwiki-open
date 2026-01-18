@@ -104,7 +104,7 @@ fi\n\
 # Stop any old nginx process (just in case)\n\
 nginx -s stop || true\n\
 # Start the API server on 9000, log output\n\
-python -m api.main --port 9000 > /app/api.log 2>&1 &\n\
+PORT=9000 python -m api.main --port 9000 > /app/api.log 2>&1 &\n\
 API_PID=$!\n\
 # Start Next.js frontend on 3000, log output\n\
 PORT=3000 HOSTNAME=0.0.0.0 node server.js > /app/frontend.log 2>&1 &\n\
