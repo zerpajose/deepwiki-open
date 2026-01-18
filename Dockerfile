@@ -40,13 +40,14 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install Node.js, npm, and Nginx
+# Install Node.js, npm, Nginx, and netcat
 RUN apt-get update && apt-get install -y \
     curl \
     gnupg \
     git \
     ca-certificates \
     nginx \
+    netcat \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list \
